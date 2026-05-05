@@ -1,0 +1,101 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      // Robust Admin check: Requires a document in the 'admins' collection or a specific field in the user profile.
+      // We will check the user's role field in their document.
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // --- User Profile Rules ---
+    match /users/{userId} {
+      function isValidUser(data) {
+        return data.keys().hasAll(['email', 'role', 'createdAt']) &&
+               data.keys().size() <= 6 &&
+               data.email is string && data.email.size() <= 128 &&
+               data.role in ['user', 'admin'] &&
+               data.createdAt is timestamp;
+      }
+
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      
+      allow create: if isSignedIn() && userId == request.auth.uid && 
+                       isValidUser(incoming()) &&
+                       incoming().role == 'user' && // Force new users to 'user' role
+                       incoming().createdAt == request.time;
+
+      allow update: if isSignedIn() && userId == request.auth.uid &&
+                       isValidUser(incoming()) &&
+                       incoming().role == existing().role && // Prevent role self-escalation
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL'])
+                       );
+    }
+
+    // --- Movie Archive Rules ---
+    match /movies/{movieId} {
+      function isValidMovie(data) {
+        return data.keys().hasAll(['title', 'director', 'releaseYear', 'synopsis', 'visibility', 'createdAt', 'updatedAt', 'creatorId']) &&
+               data.title is string && data.title.size() <= 200 &&
+               data.director is string && data.director.size() <= 128 &&
+               data.releaseYear is int && data.releaseYear >= 1800 && data.releaseYear <= 2100 &&
+               data.synopsis is string && data.synopsis.size() <= 5000 &&
+               data.visibility in ['public', 'private', 'draft'] &&
+               data.createdAt is timestamp &&
+               data.updatedAt is timestamp &&
+               data.creatorId == request.auth.uid;
+      }
+
+      function isCreator() {
+        return isSignedIn() && existing().creatorId == request.auth.uid;
+      }
+
+      allow read: if isSignedIn() && (existing().visibility == 'public' || isCreator() || isAdmin());
+      
+      allow create: if isEmailVerified() && isValidMovie(incoming()) &&
+                       incoming().createdAt == request.time &&
+                       incoming().updatedAt == request.time;
+
+      allow update: if isEmailVerified() && (isCreator() || isAdmin()) &&
+                       isValidMovie(incoming()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().creatorId == existing().creatorId &&
+                       incoming().updatedAt == request.time &&
+                       (
+                         // Actions: General Edit OR Status Change
+                         incoming().diff(existing()).affectedKeys().hasAny(['title', 'director', 'releaseYear', 'synopsis', 'genres', 'posterUrl', 'rating', 'visibility', 'updatedAt', 'isFeatured'])
+                       );
+
+      allow delete: if isEmailVerified() && (isCreator() || isAdmin());
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "Movie": {
+      "title": "Movie",
+      "description": "A movie entry in the CineTrack archive",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "The title of the movie" },
+        "director": { "type": "string", "description": "The director of the movie" },
+        "releaseYear": { "type": "integer", "description": "The year the movie was released" },
+        "synopsis": { "type": "string", "description": "A brief summary of the plot" },
+        "genres": { "type": "array", "items": { "type": "string" }, "description": "List of genres" },
+        "posterUrl": { "type": "string", "description": "URL to the movie poster image" },
+        "rating": { "type": "number", "minimum": 0, "maximum": 10, "description": "CineTrack score" },
+        "visibility": { "type": "string", "enum": ["public", "private", "draft"], "description": "Privacy status" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "creatorId": { "type": "string", "description": "UID of the user who created the entry" },
+        "isFeatured": { "type": "boolean", "description": "Whether it's featured on the hero" }
+      },
+      "required": ["title", "director", "releaseYear", "synopsis", "visibility", "createdAt", "updatedAt", "creatorId"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role", "createdAt"]
+    }
+  },
+  "firestore": {
+    "movies/{movieId}": {
+      "schema": "Movie",
+      "description": "Movie archive documents"
+    },
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    }
+  }
+}
